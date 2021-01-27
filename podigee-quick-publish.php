@@ -284,8 +284,10 @@ function pfex_plugin_section_setting_fields() {
 /* 
 * This just draws the Podigee logo in the upper right corner.
 */
-function pfex_plugin_section_head() {
-	echo '<a href="https://www.podigee.com/de" target="_blank"><img src="https://www.podigee.com/images/podigee-logo-text-horizontal.svg" class="pfex-podigee-img-right" /></a>';
+function pfex_plugin_section_head() 
+{
+	$logo_path = plugin_dir_url(__FILE__) . "res/podigee-logo.png";
+	echo "<a href=\"https://www.podigee.com/de\" target=\"_blank\"><img src=\"{$logo_path}\" class=\"pfex-podigee-img-right\" /></a>";
 }
 
 /* 
