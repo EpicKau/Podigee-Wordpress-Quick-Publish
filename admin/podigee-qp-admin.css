@@ -1,0 +1,167 @@
+/*
+* CSS for version 1.0, mainly for WP_List_Table, logo and new setup section.
+*/
+.pfex-auth-success span {
+    color: green;
+    font-weight: bold;
+}
+
+.pfex-auth-failed span {
+    color: red;
+    font-weight: bold;
+}
+
+form.pfex-auth-error table input {
+    background-color: rgba(255,55,55,.4) !important;
+}
+
+.wp-list-table .column-pubdate {
+    width: 8em;
+}
+.wp-list-table .column-title {
+    width: 31%;
+    min-width: 300px;
+}
+.wp-list-table .column-podcast {
+    width: 8em;
+}
+.wp-list-table .column-episodetype {
+    width: 4em;
+}
+.wp-list-table .column-episodenumber {
+    width: 4em;
+}
+.wp-list-table .column-shortcode {
+    width: 35%;
+    min-width: 300px;
+}
+
+.pfex-on-an-additional-note {
+    font-size: 0.9em;
+    color: #ED6D45;
+}
+
+.pfex-site-title {
+    display: inline-block;
+    margin-top: 25px;
+    margin-right: 8px;
+}
+
+.div-pfex-success {
+    background-color: rgba(198,214,112, .3);
+}
+
+.div-pfex-error {
+    background-color: rgba(232,86,40,.3);
+}
+
+.pfex-subhead {
+    margin-top: 28px;
+}
+
+.pfex-hidden {
+    display: none !important;
+}
+
+.dashicons-megaphone::before {
+    color: rgb(232,86,40) !important; 
+}
+
+ .pfex-podigee-img-right {
+        position: relative;
+        margin: 10px;
+        width: 200px; 
+    }
+
+@media (min-width: 324px) {
+    .pfex-podigee-img-right {
+        position: relative;
+        margin: 5px;
+        margin-left: 15px;
+        width: 300px; 
+    }
+}
+@media (min-width: 890px) {
+    .pfex-podigee-img-right {
+        position: absolute;
+        right: 0px;
+        top: 22px;
+        padding: 15px;
+        margin: 15px;
+        width: 300px; 
+        z-index: 200;
+    }
+}
+
+/*
+* CSS for version 0.7, some of this might be obsolete by now.
+*/
+#pfex-container label {
+	font-weight: bold;
+    margin-bottom: 4px;
+    margin-top: 10px;
+    font-size: 1em;
+}
+
+#pfex-container .postbox {
+    padding: 4px;
+}
+
+#pfex-step-1 .postbox {
+    margin-bottom: 12px;
+}
+
+#pfex-step-2 .postbox, #pfex-step-3 .postbox, #pfex-step-4 .postbox {
+    margin-bottom: 4px;
+}
+
+#pfex-step-4 textarea {
+    height: 52px;
+    
+}
+
+.pfex-ep-input {
+    width: 100%;
+}
+
+#pfex-fetch {
+    margin-top: -8px !important;
+}
+
+.pfex-feed-fetch-button, .pfex-ep-info-button {
+    margin-bottom: 6px !important;
+    vertical-align: middle !important;
+}
+
+.pfex-feed-fetch-button:hover, .pfex-ep-info-button:hover {
+    color: grey;
+    cursor: pointer;
+}
+
+.pfex-button-label {
+    margin-top: 0.25em;
+    margin-left: 0.25em;
+    font-size: 1em;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+#pfex-step-1, #pfex-step-2, #pfex-step-3, #pfex-step-4 {
+    padding-bottom: 4px;
+    border-bottom: 1px solid lightgrey;
+    margin-bottom: 6px;
+}
+
+#pfex-step-2, #pfex-step-3,  #pfex-step-4, .pfex-hidden {
+    display: none;
+ }
+
+#pfex-feed-info {
+    margin-left: 6px;
+    font-size: 0.8em;
+}
+
+.pfex-error {
+    font-weight: bold;
+    color: #F22;
+}
