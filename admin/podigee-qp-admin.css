@@ -15,6 +15,10 @@ form.pfex-auth-error table input {
     background-color: rgba(255,55,55,.4) !important;
 }
 
+#pfex-bulk-form {
+	padding-top: 7rem;
+}
+
 .wp-list-table .column-pubdate {
     width: 8em;
 }

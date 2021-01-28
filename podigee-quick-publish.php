@@ -160,6 +160,168 @@ function pfex_plugin_options_page() {
 }
 
 /*
+*	Create database to store feed entrys
+*/
+function pfex_create_database() {
+	
+	global $wpdb;
+	
+	$db_version = "1.0";
+	$table_name = $wpdb->prefix . 'pfex_feed';
+	$charset_collate = $wpdb->get_charset_collate();
+	
+	$installed_db_version = get_option("pfex_db_version");
+	
+	if($installed_db_version != $db_version)
+	{
+	
+		$sql = "CREATE TABLE $table_name (
+			id mediumint(9) NOT NULL AUTO_INCREMENT,
+			link text NOT NULL,
+			title text NOT NULL,
+			podcast text NOT NULL,
+			episodetype text NOT NULL,
+			episodenumber text NOT NULL,
+			pubdate datetime NOT NULL,
+			shortcode text NOT NULL,
+			PRIMARY KEY  (id)
+		) $charset_collate;";
+		
+		require_once( ABSPATH . 'wp-admin/includes/upgrade.php' );
+		dbDelta( $sql );
+		
+		if($installed_db_version)
+		{
+			update_option('pfex_db_version', $db_version);
+		} else {
+			add_option('pfex_db_version', $db_version);
+		}
+
+		add_option('pfex_db_entrys', 0);
+	}
+	
+	
+}
+register_activation_hook( __FILE__, 'pfex_create_database');
+
+/*
+*	Update database
+*/
+function pfex_update_database($episodes) {
+	
+	global $wpdb;
+	
+	$table_name = $wpdb->prefix . 'pfex_feed';
+	
+	$wpdb->query("TRUNCATE TABLE {$table_name}");
+	
+	
+	foreach($episodes as $episode)
+	{
+		$wpdb->insert( 
+			$table_name, 
+			array(
+				'link' => $episode['link'],
+				'title' => $episode['title'],
+				'podcast' => $episode['podcast'],
+				'episodetype' => $episode['episodetype'],
+				'episodenumber' => $episode['episodenumber'],
+				'pubdate' => $episode['pubdate'],
+				'shortcode' => $episode['shortcode']
+			)
+		);
+	}
+}
+
+/*
+*	Get database entrys
+*/
+function pfex_get_database_entrys() {
+	
+	global $wpdb;
+	
+	$table_name = $wpdb->prefix . 'pfex_feed';
+	
+	$episodes = $wpdb->get_results("SELECT * FROM  {$table_name}", ARRAY_A);
+	
+	return $episodes;
+}
+
+
+/*
+*	Register cron job
+*/
+function pfex_register_cron() {
+
+	if(!wp_next_scheduled('pfex_feed_update'))
+	{
+		wp_schedule_event(time(), 'hourly', 'pfex_feed_update');
+	}
+}
+register_activation_hook( __FILE__, 'pfex_register_cron');
+
+/*
+*	Deregister cron job
+*/
+function pfex_deregister_cron() {
+
+	$timestamp = wp_next_scheduled('pfex_feed_update');
+	
+	wp_unschedule_event ($timestamp, 'pfex_feed_update');
+}
+register_deactivation_hook( __FILE__, 'pfex_deregister_cron' );
+
+/*
+*	Feed update function
+*/
+function pfex_update_feed() {
+	
+	
+	$options = get_option('pfex_plugin_options');
+	
+	if(!check_authorization($options['pfex_slug'], $options['pfex_token']))
+	{
+		return false;
+	}
+	
+	if(isset($options['pfex_slug']) && trim($options['pfex_slug']) != "")
+	{
+		$subdomains = explode(",", $options['pfex_slug']);
+		$episodes = array();
+		
+		if(count($subdomains) > 0)
+		{
+			foreach ($subdomains as $subdomain)
+			{
+				$feed = "https://" . trim($subdomain) . ".podigee.io/feed/mp3/";
+				$items = feed2array($feed);
+				
+				if(count($items) > 0)
+				{
+					foreach ($items as $episode)
+					{
+					
+					$playershortcode = 'https://'.trim($subdomain).'.podigee.io/'.($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '').$episode['number'].'-wordpress'; // $_POST['link'];
+					$playershortcode = '[podigee-player url="'.$playershortcode.'"]';
+					$episodenumber = ($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '') . $episode['number'];
+					$pubdate = date("Y-m-d H:i:s", strtotime($episode['pubDate']));
+					
+					array_push($episodes, array('link' => $episode['link'], 'title' => $episode['title'], 'podcast' => $subdomain, 'episodetype' => $episode['episodetype'], 'episodenumber' => $episodenumber, 'pubdate' => $pubdate, 'shortcode' => $playershortcode));
+					
+					}
+				}
+			}
+		}
+		
+		pfex_update_database($episodes);
+	}
+}
+add_action ('pfex_feed_update', 'pfex_update_feed'); 
+
+
+
+
+/*
 * Yeah we know: it's called "post" but actually it is a GET operation (initially it used to be "post").
 */ 
 function pfex_handle_post_new($subdomain, $episodenumber) { //$post) {
@@ -336,44 +498,35 @@ function pfex_plugin_section_feeditems() {
 	echo '<form action="?page='.$_REQUEST['page'].(!empty($_GET['paged']) && is_numeric($_GET['paged']) ? "&paged".$_GET['paged'] : "").'" method="POST" id="pfex-bulk-form">';
 	$podigeeTable = new My_List_Table();
 
-	if (isset($options['pfex_slug']) && trim($options['pfex_slug']) != ""):
-		$subdomains = explode(",", $options['pfex_slug']);
-		if (count($subdomains) > 0):
-			foreach ($subdomains as $subdomain):
-				$feed = "https://".trim($subdomain).".podigee.io/feed/mp3/";
-				$items = feed2array($feed);
-				if (count($items) > 0) foreach ($items as $episode):
-					$row = array();
-					$playershortcode = 'https://'.trim($subdomain).'.podigee.io/'.($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '').$episode['number'].'-wordpress'; // $_POST['link'];
-					$playershortcode = '[podigee-player url="'.$playershortcode.'"]';
-					$row['podcast'] = $subdomain;
-					$row['pubdate'] = date("Y-m-d", strtotime($episode['pubDate']));
-					$row['episodetype'] = $episode['episodetype'];
-					$row['episodenumber'] = ($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '').$episode['number'];
-	    			$row['shortcode'] = $playershortcode;
-					$row['title'] = $episode['title'];
-	    			$row['link'] = $episode['link'];
+	$entrys = pfex_get_database_entrys();
 
-	    			$foundposts = (query_posts(array(
-	    				'post_status' => array('publish', 'pending', 'draft', 'auto-draft', 'future', 'private', 'inherit'),  
-	    				's' => $row['title'],
-	    				'orderby' => 'date', 
-   						'order'   => 'DESC',
-   						'posts_per_page' => 1
-	    			))); 
+	if($entrys)
+	{
 
-	    			if ($foundposts && count($foundposts) > 0) {
-	    				$foundid = ($foundposts[0]->ID); 
-	    				$row['editlink'] = 'post.php?post='.$foundid.'&action=edit';
-	    				$row['previewlink'] = '?p='.$foundid.'&preview=true';
-	    				$row['title'] = '<a href="'.$row['editlink'].'">'.$row['title'].'</a>';
-	    			} 
+		foreach($entrys as $entry)
+		{
+	
+			$foundposts = (query_posts(array(
+				'post_status' => array('publish', 'pending', 'draft', 'auto-draft', 'future', 'private', 'inherit'),  
+	    		's' => $entry['title'],
+	    		'orderby' => 'date', 
+   				'order'   => 'DESC',
+   				'posts_per_page' => 1
+	    	))); 
 
-	    			$podigeeTable->addData($row);
-	    		endforeach;
-	    	endforeach;
-	    endif;
-	endif;
+	    	if($foundposts && count($foundposts) > 0) 
+			{
+	    		$foundid = $foundposts[0]->ID; 
+				$entry['editlink'] = "post.php?post={$foundid}&action=edit";
+				$entry['previewlink'] = "?p={$foundid}&preview=true";
+				$entry['title'] = "<a href=\"{$entry['editlink']}\">{$entry['title']}</a>";
+	    	} 
+			
+			
+
+	    	$podigeeTable->addData($entry);
+		}
+	}
 
 	echo '<div class="wrap"><h3>';
 	_e('These are the episodes in your connected feeds:', 'podigee-quick-publish');
@@ -382,7 +535,6 @@ function pfex_plugin_section_feeditems() {
 	$podigeeTable->display(); 
 	echo '</div></form>'; 
 
-	
 }
 
 /**
