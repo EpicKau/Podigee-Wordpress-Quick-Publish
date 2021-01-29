@@ -232,8 +232,6 @@ function pfex_create_database() {
 		} else {
 			add_option('pfex_db_version', $db_version);
 		}
-
-		add_option('pfex_db_entrys', 0);
 	}
 	
 	
@@ -284,21 +282,42 @@ function pfex_get_database_entrys() {
 }
 
 /*
+*	Get database entrys count
+*/
+function pfex_get_database_entrys_count() {
+
+	global $wpdb;
+	
+	$table_name = $wpdb->prefix . 'pfex_feed';
+	
+	$count = $wpdb->get_var("SELECT COUNT(*) FROM {$table_name}");
+	
+	return $count;
+}
+/*
 *	handle auto posting
 */
-function pfex_auto_post($subdomain, $episodenumber) {
+function pfex_auto_post($episodes) {
 	
 	$options = get_option('pfex_plugin_options');
 	
 	if($options["publish_default"] !== "no")
 	{
-		pfex_handle_post_new($subdomain, $episodenumber, $options["publish_default"]);
-		
-		if($options["notification_email"] && $options["notification_email"] !== "")
+		foreach($episodes as $episode)
 		{
-			$notification_text = sprintf(__("[%s] - Episode %s was created!", "podigee-quick-publish"), $subdomain, $episodenumber);
+			$new_post = pfex_handle_post_new($episode["podcast"], $episode["episodenumber"], $options["publish_default"]);
 			
-			wp_mail($options["notification_email"], __("New Podcast episode created", "podigee-quick-publish"), $notification_text);
+			if(!$new_post)
+			{
+				return false;
+			}
+				
+			if($options["notification_email"] && $options["notification_email"] !== "")
+			{
+				$notification_text = sprintf(__("[%s] - Episode %s was created!", "podigee-quick-publish"), $episode["podcast"], $episode["episodenumber"]);
+				
+				wp_mail($options["notification_email"], __("New Podcast episode created", "podigee-quick-publish"), $notification_text);
+			}
 		}
 	}
 }
@@ -363,15 +382,22 @@ function pfex_update_feed() {
 						$pubdate = date("Y-m-d H:i:s", strtotime($episode['pubDate']));
 						
 						array_push($episodes, array('link' => $episode['link'], 'title' => $episode['title'], 'podcast' => $subdomain, 'episodetype' => $episode['episodetype'], 'episodenumber' => $episodenumber, 'pubdate' => $pubdate, 'shortcode' => $playershortcode));
-					
-					
-						pfex_auto_post($subdomain, $episodenumber);
 					}
 				}
 			}
 		}
 		
-		pfex_update_database($episodes);
+		$db_entrys = pfex_get_database_entrys_count();
+		$episode_count = count($episodes);
+		
+		error_log($db_entrys);
+		
+		if($db_entrys < $episode_count)
+		{
+			pfex_update_database($episodes);
+			pfex_auto_post($episodes);
+		}
+		
 	}
 }
 add_action ('pfex_feed_update', 'pfex_update_feed'); 
@@ -383,48 +409,78 @@ add_action ('pfex_feed_update', 'pfex_update_feed');
 * Yeah we know: it's called "post" but actually it is a GET operation (initially it used to be "post").
 */ 
 function pfex_handle_post_new($subdomain, $episodenumber, $status = "draft") { //$post) {
+	
 	$feed = 'https://'.$subdomain.'.podigee.io/feed/mp3';
 	$feedcontent = feed2array($feed);
 	$episode_to_post = false;
-	if ($feedcontent != false && count($feedcontent) > 0) foreach ($feedcontent as $episode):
-		if ($episode['number'] == $episodenumber):
-			$episode_to_post = $episode;
-			break;
-		endif;
-		if (substr($episodenumber,0,1) == 'b' && $episode['episodetype'] == 'bonus' && 'b'.$episode['number'] == $episodenumber):
-			$episode_to_post = $episode;
-			break;
-		endif;
-		if (substr($episodenumber,0,1) == 't' && $episode['episodetype'] == 'teaser' && 't'.$episode['number'] == $episodenumber):
-			$episode_to_post = $episode;
-			break;
-		endif;
-	endforeach;
-	if ($episode_to_post == false) return false;
-	$podcast = $subdomain;
-	$content = isset($episode_to_post['content']) ? $episode_to_post['content'] : "";
-	$subtitle = isset($episode_to_post['subtitle']) ? $episode_to_post['subtitle'] : "";
-	$episodetype = $episode_to_post['episodetype'];#
-	$episodetpnumber = $episode_to_post['number'];
-	$link = 'https://'.$podcast.'.podigee.io/'.($episodetype != "full" ? substr($episodetype,0,1) : '').$episodetpnumber.'-wordpress'; 
-	$playershortcode = '[podigee-player url="'.$link.'"]';
-	$me = wp_get_current_user();
-    
-
-    $episode_to_post['pubDate'] = strtotime($episode_to_post['pubDate']);
 	
-	$post = array(
-          'post_title'		=> ($episode_to_post['title']), 
-          'post_status'		=> $status, 
-          'post_author'		=> $me->ID, 
-          'post_date'		=> $episode_to_post['pubDate'], 
-          'post_content'	=> '<p><strong>'.$subtitle.'</strong></p><p>'.$playershortcode.'</p><p>'.($content)."</p>",
-           //'edit_date'		=> true
-        );
-	if ($episode_to_post['pubDate'] != false) $post['post_date'] = date("Y-m-d H:i:s", $episode_to_post['pubDate']);
+	if($feedcontent != false && count($feedcontent) > 0) 
+	{
+		
+		foreach($feedcontent as $episode)
+		{
+			if ($episode['number'] == $episodenumber)
+			{
+					$episode_to_post = $episode;
+					break;
+			}
+			if (substr($episodenumber,0,1) == 'b' && $episode['episodetype'] == 'bonus' && 'b'.$episode['number'] == $episodenumber) 
+			{
+				$episode_to_post = $episode;
+				break;
+			}
+			if (substr($episodenumber,0,1) == 't' && $episode['episodetype'] == 'teaser' && 't'.$episode['number'] == $episodenumber)
+			{
+				$episode_to_post = $episode;
+				break;
+			}
+		}
+		
+		if($episode_to_post == false)
+		{
+			return false;
+		}
+		
+		if(pfex_check_existing_posts($episode_to_post['title']))
+		{
+			return false;
+		}
+	
+		$podcast = $subdomain;
+		$content = isset($episode_to_post['content']) ? $episode_to_post['content'] : "";
+		$subtitle = isset($episode_to_post['subtitle']) ? $episode_to_post['subtitle'] : "";
+		$episodetype = $episode_to_post['episodetype'];#
+		$episodetpnumber = $episode_to_post['number'];
+		$link = 'https://'.$podcast.'.podigee.io/'.($episodetype != "full" ? substr($episodetype,0,1) : '').$episodetpnumber.'-wordpress'; 
+		$playershortcode = '[podigee-player url="'.$link.'"]';
+		$me = wp_get_current_user();
+		
 
-	 $post_id = wp_insert_post( $post, false );
-	 if (!is_wp_error($post_id)) return $post_id; else return false;
+		$episode_to_post['pubDate'] = strtotime($episode_to_post['pubDate']);
+		
+		$post = array(
+			'post_title'		=> $episode_to_post['title'], 
+			'post_status'		=> $status, 
+			'post_author'		=> $me->ID, 
+			'post_date'		=> $episode_to_post['pubDate'], 
+			'post_content'	=> '<p><strong>'.$subtitle.'</strong></p><p>'.$playershortcode.'</p><p>'.($content)."</p>",
+			//'edit_date'		=> true
+		);
+			
+		if($episode_to_post['pubDate'] != false)
+		{
+			$post['post_date'] = date("Y-m-d H:i:s", $episode_to_post['pubDate']);
+		}
+		
+		 $post_id = wp_insert_post( $post, false );
+		
+		if(!is_wp_error($post_id))
+		{
+			return $post_id;
+		} else {
+			return false;
+		}
+	}
 }
 
 /*
@@ -569,17 +625,10 @@ function pfex_plugin_section_feeditems() {
 		foreach($entrys as $entry)
 		{
 	
-			$foundposts = (query_posts(array(
-				'post_status' => array('publish', 'pending', 'draft', 'auto-draft', 'future', 'private', 'inherit'),  
-	    		's' => $entry['title'],
-	    		'orderby' => 'date', 
-   				'order'   => 'DESC',
-   				'posts_per_page' => 1
-	    	))); 
+			$foundid = pfex_check_existing_posts($entry["title"]);
 
-	    	if($foundposts && count($foundposts) > 0) 
+	    	if($foundid) 
 			{
-	    		$foundid = $foundposts[0]->ID; 
 				$entry['editlink'] = "post.php?post={$foundid}&action=edit";
 				$entry['previewlink'] = "?p={$foundid}&preview=true";
 				$entry['title'] = "<a href=\"{$entry['editlink']}\">{$entry['title']}</a>";
@@ -662,6 +711,28 @@ function pfex_check_url($url) {
 	}
 	if ($_PFEX_DEBUG) pfex_log(false, "Something went wrong while URL checking.", array("url" => $url));
 	return false;
+}
+
+/*
+*	Check if post exists
+*/
+function pfex_check_existing_posts($title) 
+{
+
+	$foundposts = query_posts(array(
+		'post_status' => array('publish', 'pending', 'draft', 'auto-draft', 'future', 'private', 'inherit'),  
+		's' => $title,
+		'orderby' => 'date', 
+		'order'   => 'DESC',
+		'posts_per_page' => 1
+	)); 
+
+	if($foundposts && count($foundposts) > 0) 
+	{
+		return $foundposts[0]->ID;
+	}
+
+	return 0;
 }
 
 /**
