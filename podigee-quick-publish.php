@@ -59,6 +59,42 @@ if (!(function_exists('podigee_player'))) { function podigee_player( $atts ) {
 	}
 	if (!(shortcode_exists("podigee-player"))) add_shortcode( 'podigee-player', 'podigee_player' );
 }
+
+/*
+*	Shortcode for last X episodes.
+*/
+function pfex_podigee_player($atts) {
+	$options = get_option('pfex_plugin_options');
+	
+	$atts = shortcode_atts(
+			array(
+				'count' => $options['episode_default'],
+			),
+			$atts
+		);
+	
+	$entrys = pfex_get_database_entrys();
+
+	if($entrys)
+	{
+		$output = "";
+		
+		foreach($entrys as $el => $entry)
+		{
+			if($el >= $atts["count"])
+			{
+				break;
+			}
+			
+			$output .= '<script class="podigee-podcast-player" src="https://cdn.podigee.com/podcast-player/javascripts/podigee-podcast-player.js" data-configuration="' . $entry['link'] . '/embed?context=external"></script>';
+		}
+		
+		return $output;
+	}
+}
+add_shortcode('pfex_podigee_player', 'pfex_podigee_player');
+
+
 /* 
 * Preparing translation
 */
@@ -247,6 +283,26 @@ function pfex_get_database_entrys() {
 	return $episodes;
 }
 
+/*
+*	handle auto posting
+*/
+function pfex_auto_post($subdomain, $episodenumber) {
+	
+	$options = get_option('pfex_plugin_options');
+	
+	if($options["publish_default"] !== "no")
+	{
+		pfex_handle_post_new($subdomain, $episodenumber, $options["publish_default"]);
+		
+		if($options["notification_email"] && $options["notification_email"] !== "")
+		{
+			$notification_text = sprintf(__("[%s] - Episode %s was created!", "podigee-quick-publish"), $subdomain, $episodenumber);
+			
+			wp_mail($options["notification_email"], __("New Podcast episode created", "podigee-quick-publish"), $notification_text);
+		}
+	}
+}
+
 
 /*
 *	Register cron job
@@ -301,13 +357,15 @@ function pfex_update_feed() {
 					foreach ($items as $episode)
 					{
 					
-					$playershortcode = 'https://'.trim($subdomain).'.podigee.io/'.($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '').$episode['number'].'-wordpress'; // $_POST['link'];
-					$playershortcode = '[podigee-player url="'.$playershortcode.'"]';
-					$episodenumber = ($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '') . $episode['number'];
-					$pubdate = date("Y-m-d H:i:s", strtotime($episode['pubDate']));
+						$playershortcode = 'https://'.trim($subdomain).'.podigee.io/'.($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '').$episode['number'].'-wordpress'; // $_POST['link'];
+						$playershortcode = '[podigee-player url="'.$playershortcode.'"]';
+						$episodenumber = ($episode['episodetype'] != "full" ? substr($episode['episodetype'],0,1) : '') . $episode['number'];
+						$pubdate = date("Y-m-d H:i:s", strtotime($episode['pubDate']));
+						
+						array_push($episodes, array('link' => $episode['link'], 'title' => $episode['title'], 'podcast' => $subdomain, 'episodetype' => $episode['episodetype'], 'episodenumber' => $episodenumber, 'pubdate' => $pubdate, 'shortcode' => $playershortcode));
 					
-					array_push($episodes, array('link' => $episode['link'], 'title' => $episode['title'], 'podcast' => $subdomain, 'episodetype' => $episode['episodetype'], 'episodenumber' => $episodenumber, 'pubdate' => $pubdate, 'shortcode' => $playershortcode));
 					
+						pfex_auto_post($subdomain, $episodenumber);
 					}
 				}
 			}
@@ -324,7 +382,7 @@ add_action ('pfex_feed_update', 'pfex_update_feed');
 /*
 * Yeah we know: it's called "post" but actually it is a GET operation (initially it used to be "post").
 */ 
-function pfex_handle_post_new($subdomain, $episodenumber) { //$post) {
+function pfex_handle_post_new($subdomain, $episodenumber, $status = "draft") { //$post) {
 	$feed = 'https://'.$subdomain.'.podigee.io/feed/mp3';
 	$feedcontent = feed2array($feed);
 	$episode_to_post = false;
@@ -356,11 +414,11 @@ function pfex_handle_post_new($subdomain, $episodenumber) { //$post) {
     $episode_to_post['pubDate'] = strtotime($episode_to_post['pubDate']);
 	
 	$post = array(
-          'post_title'     => ($episode_to_post['title']), 
-          'post_status'    => 'draft', 
-          'post_author'    => $me->ID, 
-           'post_date'      => $episode_to_post['pubDate'], 
-           'post_content'   => '<p><strong>'.$subtitle.'</strong></p><p>'.$playershortcode.'</p><p>'.($content)."</p>",
+          'post_title'		=> ($episode_to_post['title']), 
+          'post_status'		=> $status, 
+          'post_author'		=> $me->ID, 
+          'post_date'		=> $episode_to_post['pubDate'], 
+          'post_content'	=> '<p><strong>'.$subtitle.'</strong></p><p>'.$playershortcode.'</p><p>'.($content)."</p>",
            //'edit_date'		=> true
         );
 	if ($episode_to_post['pubDate'] != false) $post['post_date'] = date("Y-m-d H:i:s", $episode_to_post['pubDate']);
@@ -433,6 +491,11 @@ function pfex_plugin_admin_init(){
 	add_settings_field('pfex_slug', __('Your podcast&apos;s subdomain:','podigee-quick-publish'), 'pfex_plugin_setting_slug', 'podigee-wpqp-plugin', 'pfex_plugin_main');
 	add_settings_field('pfex_api', __('Your Podigee auth token:', 'podigee-quick-publish'), 'pfex_plugin_setting_token', 'podigee-wpqp-plugin', 'pfex_plugin_main');
 	add_settings_field('pfex_welcome', __('Show welcome info screen:', 'podigee-quick-publish'), 'pfex_plugin_setting_welcome', 'podigee-wpqp-plugin', 'pfex_plugin_main');
+	
+	add_settings_field('pfex_shortcode_episode_count', __('Number of episodes shown:', 'podigee-quick-publish'), 'pfex_plugin_setting_episode_default', 'podigee-wpqp-plugin', 'pfex_plugin_main');
+	add_settings_field('pfex_publish_episodes', __('Publish episodes when released:', 'podigee-quick-publish'), 'pfex_plugin_setting_publish_default', 'podigee-wpqp-plugin', 'pfex_plugin_main');
+	add_settings_field('pfex_notification_email', __('Publish notification email:', 'podigee-quick-publish'), 'pfex_plugin_setting_publish_email', 'podigee-wpqp-plugin', 'pfex_plugin_main');
+	
 }
 add_action('admin_init', 'pfex_plugin_admin_init');
 
@@ -619,19 +682,76 @@ function pfex_plugin_setting_welcome() {
 }
 
 /**
+* Options and explanation for the settings page 
+*/
+function pfex_plugin_setting_episode_default() {
+	$options = get_option('pfex_plugin_options');
+	$default = isset($options['episode_default']) ? $options['episode_default'] : 3;
+	
+	echo "<input id='episode_default' name='pfex_plugin_options[episode_default]' size='10' type='number' value='{$default}' />";
+	printf("<p> %s</p>", __("Please enter the number of episodes that should be displayed", 'podigee-quick-publish'));
+}
+
+/**
+* Options and explanation for the settings page 
+*/
+function pfex_plugin_setting_publish_default() {
+	$options = get_option('pfex_plugin_options');
+	$available_options = array("no", "draft", "publish");
+	$default = isset($options['publish_default']) ? $options['publish_default'] : "no";
+	
+	echo "<select id='publish_default' name='pfex_plugin_options[publish_default]'>";
+	
+	foreach($available_options as $option)
+	{
+		$selected = $default == $option ? 'selected="selected"' : "";
+		printf('<option value="%s" %s>%s</option>', $option, $selected, $option);
+	}
+	
+	echo "</select>";
+	printf("<p> %s</p>", __("Please choose default behavior", 'podigee-quick-publish'));
+}
+
+/**
+* Options and explanation for the settings page 
+*/
+function pfex_plugin_setting_publish_email() {
+	$options = get_option('pfex_plugin_options');
+	$default = isset($options['notification_email']) ? $options['notification_email'] : "";
+	
+	echo "<input id='notification_email' name='pfex_plugin_options[notification_email]' size='40' type='text' value='{$default}' />";
+	printf("<p> %s</p>", __("Please enter the notification email", 'podigee-quick-publish'));
+}
+
+
+/**
 * Validation for the plugin settings  
 */
 function pfex_options_validate($input) {
 	$options = get_option('pfex_plugin_options');
 	$options['pfex_token'] = strtolower(trim($input['pfex_token']));
-	if(!preg_match('/^[a-z0-9]{32}$/i', $options['pfex_token'])) {
+	
+	if(!preg_match('/^[a-z0-9]{32}$/i', $options['pfex_token'])) 
+	{
 		$options['pfex_token'] = '';
 	}
+	
 	$options['pfex_slug'] = strtolower(trim(str_replace(" ", "", $input['pfex_slug'])));
-	if(!preg_match('/^[a-z0-9-_,]+$/i', $options['pfex_slug'])) {
+
+	if(!preg_match('/^[a-z0-9-_,]+$/i', $options['pfex_slug'])) 
+	{
 		$options['pfex_slug'] = '';
 	}
-	$options['pfex_welcome'] = ( isset($input['pfex_welcome']) && $input['pfex_welcome'] == true ? true : false);
+	
+	$options['pfex_welcome'] = isset($input['pfex_welcome']) && $input['pfex_welcome'] == true ? true : false;
+	
+	
+	$options['episode_default'] =  isset($input['episode_default']) ? $input['episode_default']  : 3;
+	
+	$options['publish_default'] = isset($input['publish_default']) ? $input['publish_default'] : "no";
+	
+	$options['notification_email'] = isset($input['notification_email']) ? $input['notification_email'] : "";
+	
 	global $_PFEX_DEBUG;
 	if ($_PFEX_DEBUG) pfex_log(true, "Options saved.", $options);
 	return $options;
